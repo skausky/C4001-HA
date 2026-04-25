@@ -12,7 +12,7 @@
   const FONT    = "'Courier New',Courier,monospace";
   const MAX_M   = 25;
   const HALF_DEG = 50;
-  const TRAIL_MS = 30000;
+  const TRAIL_MS = 5 * 60 * 1000;
   const RING_FT  = [16, 33, 49, 66, 82];
   const RING_M   = [4.877, 10.058, 14.935, 20.117, 24.994];
 
@@ -245,7 +245,7 @@ canvas{display:block}
       this._occ  = g('entity_occupancy')?.state === 'on';
 
       const now = Date.now();
-      if (this._det && this._dm !== null) {
+      if (this._dm !== null) {
         this._trail.push({ d: this._dm, v: this._sms, t: now });
       }
       const cut = now - TRAIL_MS;
@@ -409,7 +409,7 @@ canvas{display:block}
         ctx.globalAlpha = alpha;
         ctx.fillStyle = col;
         ctx.beginPath();
-        ctx.arc(ax, this._ry(pt.d), 3, 0, Math.PI * 2);
+        ctx.arc(ax, this._ry(pt.d), 4, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.globalAlpha = 1;
