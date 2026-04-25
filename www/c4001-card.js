@@ -120,6 +120,7 @@ canvas{display:block}
       this._det = false;
       this._occ = false;
       this._trail = [];
+      this._backfilled = false;
     }
 
     setConfig(cfg) {
@@ -178,8 +179,60 @@ canvas{display:block}
       this._cH = h - this._ay - Math.round(h * 0.03);
     }
 
+    async _backfill() {
+      this._backfilled = true;
+      try {
+        const distId = this._cfg.entity_distance;
+        const spdId  = this._cfg.entity_speed_ms;
+        const start  = new Date(Date.now() - TRAIL_MS).toISOString();
+        const token  = this._hass.auth.data.access_token;
+        const ids    = encodeURIComponent(distId) + ',' + encodeURIComponent(spdId);
+        const url    = `/api/history/period/${start}?filter_entity_id=${ids}&no_attributes=true&minimal_response=true`;
+        const resp   = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        if (!resp.ok) return;
+        const data = await resp.json();
+
+        let dHist = [], vHist = [];
+        for (const grp of data) {
+          if (!grp.length) continue;
+          if (grp[0].entity_id === distId)     dHist = grp;
+          else if (grp[0].entity_id === spdId) vHist = grp;
+        }
+
+        const vArr = vHist
+          .map(p => ({ ts: +new Date(p.last_changed || p.last_updated), v: parseFloat(p.state) }))
+          .filter(p => isFinite(p.v))
+          .sort((a, b) => a.ts - b.ts);
+
+        const nowMs = Date.now(), cut = nowMs - TRAIL_MS;
+        const newPts = [];
+        for (const pt of dHist) {
+          const d  = parseFloat(pt.state);
+          const ts = +new Date(pt.last_changed || pt.last_updated);
+          if (!isFinite(d) || d <= 0 || ts < cut || ts > nowMs) continue;
+          let v = 0;
+          if (vArr.length) {
+            let lo = 0, hi = vArr.length - 1, bi = 0;
+            while (lo <= hi) {
+              const mid = (lo + hi) >> 1;
+              if (vArr[mid].ts <= ts) { bi = mid; lo = mid + 1; } else hi = mid - 1;
+            }
+            v = vArr[bi].v;
+          }
+          newPts.push({ d, v, t: ts });
+        }
+        if (!newPts.length) return;
+
+        const existing = new Set(this._trail.map(e => e.t));
+        const toAdd = newPts.filter(p => !existing.has(p.t));
+        this._trail = [...toAdd, ...this._trail].sort((a, b) => a.t - b.t);
+        if (this._trail.length > 500) this._trail.splice(0, this._trail.length - 500);
+      } catch (_) {}
+    }
+
     _poll() {
       if (!this._hass || !this._cfg) return;
+      if (!this._backfilled) this._backfill();
       const s = this._hass.states;
       const g = (k) => s[this._cfg[k]];
 
@@ -331,8 +384,8 @@ canvas{display:block}
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.fillStyle = 'rgba(0,224,255,0.45)';
-        ctx.textAlign = 'left';
-        ctx.fillText(RING_FT[i] + 'ft', ax + hw + 4, ry + 3);
+        ctx.textAlign = 'right';
+        ctx.fillText(RING_FT[i] + 'ft', Math.min(ax + hw - 2, W - 4), ry + 3);
         ctx.setLineDash([3, 8]);
       });
       ctx.setLineDash([]);
